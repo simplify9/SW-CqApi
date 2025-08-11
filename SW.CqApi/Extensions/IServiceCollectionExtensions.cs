@@ -27,15 +27,18 @@ namespace SW.CqApi
             services.AddSingleton<ServiceDiscovery>();
 
             if (assemblies.Length == 0) assemblies = new Assembly[] { Assembly.GetCallingAssembly() };
-
+            
+            
             services.Scan(scan => scan
                 .FromAssemblies(assemblies)
-                .AddClasses(classes => classes.AssignableTo<IHandler>())
+                .AddClasses(classes => classes.AssignableTo<IHandler>(),
+                    publicOnly: false) // This parameter allows internal types)
                 .AsSelf().As<IHandler>().WithScopedLifetime());
 
             services.Scan(scan => scan
                 .FromAssemblies(assemblies)
-                .AddClasses(classes => classes.AssignableTo<IValidator>())
+                .AddClasses(classes => classes.AssignableTo<IValidator>(),
+                    publicOnly: false) // This parameter allows internal types))
                 .AsImplementedInterfaces().WithTransientLifetime());
             
             

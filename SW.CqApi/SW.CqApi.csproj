@@ -19,7 +19,7 @@
     <PackageReference Include="FluentValidation" Version="11.11.0" />
     <PackageReference Include="Microsoft.OpenApi.Readers" Version="1.6.23" />
     <PackageReference Include="Newtonsoft.Json.Schema" Version="4.0.1" />
-    <PackageReference Include="Scrutor" Version="6.0.1" />
+    <PackageReference Include="Scrutor" Version="6.1.0" />
     <PackageReference Include="SimplyWorks.HttpExtensions" Version="8.0.0" />
   </ItemGroup>
 
