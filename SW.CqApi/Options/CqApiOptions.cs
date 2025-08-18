@@ -70,6 +70,11 @@ namespace SW.CqApi
         /// Protect all APIs by default. To unprotect specific APIs, use UnProtect attribute.
         /// </summary>
         public bool ProtectAll { get; set; }
+        
+        /// <summary>
+        /// OpenApi Documentation is added by default. Use this option to disable it.
+        /// </summary>
+        public bool DisableOpenApiDocumentation { get; set; }
 
         public string RolePrefix { get; set; }
 

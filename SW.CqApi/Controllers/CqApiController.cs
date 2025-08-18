@@ -50,6 +50,7 @@ namespace SW.CqApi
         [HttpGet("swagger.json")]
         public ActionResult<string> GetOpenApiDocument()
         {
+            if (_options.DisableOpenApiDocumentation) return NotFound("OpenAPI documentation is disabled.");
             var sd = _serviceProvider.GetService<ServiceDiscovery>();
             return Ok(sd.GetOpenApiDocument());
         }
