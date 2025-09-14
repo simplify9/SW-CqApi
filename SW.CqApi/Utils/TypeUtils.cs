@@ -69,13 +69,13 @@ namespace SW.CqApi.Utils
             else if(parameter.IsPrimitive || IsNumericType(parameter) || parameter == typeof(string))
             {
                 schema.Type = jsonifed.Type.ToJsonType();
-                schema.Example = GetExample(parameter, maps, components);
+                schema.Example = GetExample(parameter, maps, components, serializer);
             }
             else if (jsonifed.Items != null)
             {
                 schema.Type = jsonifed.Type.ToJsonType();
                 schema.Items = jsonifed.Items[0].GetOpenApiSchema();
-                schema.Example = GetExample(parameter, maps, components);
+                schema.Example = GetExample(parameter, maps, components, serializer);
             }
             else if(parameter.GetProperties().Length != 0 && !IsNumericType(parameter))
             {
@@ -123,7 +123,7 @@ namespace SW.CqApi.Utils
                     return false;
             }
         }
-        static public IOpenApiAny GetExample(Type parameter, TypeMaps maps, OpenApiComponents components)
+        static public IOpenApiAny GetExample(Type parameter, TypeMaps maps, OpenApiComponents components, Newtonsoft.Json.JsonSerializer serializer = null)
         {
 
             if (components.Schemas.ContainsKey(parameter.Name)) return components.Schemas[parameter.Name].Example;
@@ -138,24 +138,53 @@ namespace SW.CqApi.Utils
                 var words = new string[] { "foo", "bar", "baz" };
                 return new OpenApiString(words[randomNum]);
             }
+            else if (parameter == typeof(int) || parameter == typeof(int?))
+            {
+                return new OpenApiInteger(123);
+            }
+            else if (parameter == typeof(long) || parameter == typeof(long?))
+            {
+                return new OpenApiLong(123456789);
+            }
+            else if (parameter == typeof(double) || parameter == typeof(double?) || 
+                     parameter == typeof(decimal) || parameter == typeof(decimal?) ||
+                     parameter == typeof(float) || parameter == typeof(float?))
+            {
+                return new OpenApiDouble(123.45);
+            }
             else if (IsNumericType(parameter))
             {
                 int randomNum = new Random().Next() % 400;
                 return new OpenApiInteger(randomNum);
             }
-            else if (parameter == typeof(bool))
+            else if (parameter == typeof(bool) || parameter == typeof(bool?))
             {
-                int randomNum = new Random().Next() % 1;
-                return new OpenApiBoolean(randomNum == 0);
+                return new OpenApiBoolean(true);
             }
-            else if (parameter.GetInterfaces().Contains(typeof(IEnumerable)))
+            else if (parameter == typeof(DateTime) || parameter == typeof(DateTime?))
+            {
+                return new OpenApiString(DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"));
+            }
+            else if (parameter == typeof(Guid) || parameter == typeof(Guid?))
+            {
+                return new OpenApiString(Guid.NewGuid().ToString());
+            }
+            else if (parameter != typeof(string) && (parameter.GetInterfaces().Contains(typeof(IEnumerable)) || 
+                     parameter.IsGenericType && parameter.GetGenericTypeDefinition() == typeof(List<>) ||
+                     parameter.IsGenericType && parameter.GetGenericTypeDefinition() == typeof(IList<>) ||
+                     parameter.IsGenericType && parameter.GetGenericTypeDefinition() == typeof(ICollection<>)))
             {
                 var exampleArr = new OpenApiArray();
-                int randomNum = new Random().Next() % 3;
-                for(int _ = 0; _ < randomNum + 1; _++)
+                var innerType = parameter.GetElementType() ?? 
+                               (parameter.GenericTypeArguments.Length > 0 ? parameter.GenericTypeArguments[0] : typeof(object));
+                
+                // Generate 1-2 example items for the array
+                int itemCount = new Random().Next(1, 3);
+                for(int _ = 0; _ < itemCount; _++)
                 {
-                    var innerType = parameter.GetElementType() ?? parameter.GenericTypeArguments[0];
-                    exampleArr.Add(GetExample(innerType, maps, components));
+                    var innerExample = GetExample(innerType, maps, components, serializer);
+                    if (innerExample != null)
+                        exampleArr.Add(innerExample);
                 }
 
                 return exampleArr;
@@ -164,8 +193,17 @@ namespace SW.CqApi.Utils
             {
                 if (parameter.GetProperties().Length == 0) return new OpenApiNull();
                 var example = new OpenApiObject();
+                var namingStrategy = serializer?.ContractResolver is DefaultContractResolver resolver ? resolver.NamingStrategy : null;
+                
                 foreach(var prop in parameter.GetProperties())
-                    example.Add(prop.Name, GetExample(prop.PropertyType, maps, components));
+                {
+                    if (prop.GetCustomAttribute<IgnoreMemberAttribute>() != null) continue;
+                    
+                    var propertyName = namingStrategy != null ? namingStrategy.GetPropertyName(prop.Name, false) : prop.Name;
+                    var propertyExample = GetExample(prop.PropertyType, maps, components, serializer);
+                    if (propertyExample != null)
+                        example.Add(propertyName, propertyExample);
+                }
                 return example;
             }
 
