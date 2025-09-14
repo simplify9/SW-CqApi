@@ -26,6 +26,26 @@ namespace SW.CqApi.Utils
             var jsonifed = parameter.GetJsonType();
             string name = parameter.Name;
 
+            // Handle collection types first (List<T>, IList<T>, etc.)
+            if (parameter != typeof(string) && 
+                (parameter.IsGenericType && 
+                 (parameter.GetGenericTypeDefinition() == typeof(List<>) ||
+                  parameter.GetGenericTypeDefinition() == typeof(IList<>) ||
+                  parameter.GetGenericTypeDefinition() == typeof(ICollection<>) ||
+                  parameter.GetGenericTypeDefinition() == typeof(IEnumerable<>)) ||
+                 parameter.GetInterfaces().Any(i => i.IsGenericType && 
+                     (i.GetGenericTypeDefinition() == typeof(IList<>) ||
+                      i.GetGenericTypeDefinition() == typeof(ICollection<>) ||
+                      i.GetGenericTypeDefinition() == typeof(IEnumerable<>)))))
+            {
+                schema.Type = "array";
+                var elementType = parameter.GetGenericArguments()[0];
+                schema.Items = ExplodeParameter(elementType, components, maps, serializer);
+                schema.Example = GetExample(parameter, maps, components, serializer);
+                components.Schemas[name] = schema;
+                return schema;
+            }
+
             if (parameter.GenericTypeArguments.Length > 0)
             {
                 foreach(var genArg in parameter.GenericTypeArguments)
@@ -73,7 +93,7 @@ namespace SW.CqApi.Utils
             }
             else if (jsonifed.Items != null)
             {
-                schema.Type = jsonifed.Type.ToJsonType();
+                schema.Type = "array";
                 schema.Items = jsonifed.Items[0].GetOpenApiSchema();
                 schema.Example = GetExample(parameter, maps, components, serializer);
             }

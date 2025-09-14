@@ -72,8 +72,14 @@ namespace SW.CqApi.Utils
                     return "string";
                 case "Object":
                     return "object";
+                case "Array":
+                    return "array";
+                case "Boolean":
+                    return "boolean";
+                case "Null":
+                    return "null";
                 default:
-                    return splitJson;
+                    return splitJson.ToLowerInvariant();
             }
         }
     }
