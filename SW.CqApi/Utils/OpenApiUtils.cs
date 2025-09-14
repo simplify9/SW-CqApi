@@ -29,7 +29,7 @@ namespace SW.CqApi.Utils
                 Summary = baseApiOperation.Summary
             };
         }
-        public static OpenApiResponses GetOpenApiResponses(MethodInfo methodInfo, IEnumerable<ReturnsAttribute> returnsAttributes, OpenApiComponents components, string InterfaceType, TypeMaps maps)
+        public static OpenApiResponses GetOpenApiResponses(MethodInfo methodInfo, IEnumerable<ReturnsAttribute> returnsAttributes, OpenApiComponents components, string InterfaceType, TypeMaps maps, Newtonsoft.Json.JsonSerializer serializer = null)
         {
             //var methodInfo = handlerInfo.Method;
             // var returnMediaType = new OpenApiMediaType
@@ -41,18 +41,18 @@ namespace SW.CqApi.Utils
             // };
             
             var responses = returnsAttributes
-                .ToOpenApiResponses(components, maps)
+                .ToOpenApiResponses(components, maps, serializer)
                 .GetDefaultResponses(methodInfo, InterfaceType);
             return responses;
         }
 
-        public static IList<OpenApiParameter> GetOpenApiParameters(IEnumerable<ParameterInfo> parameters, OpenApiComponents components, TypeMaps maps, bool withKey = false)
+        public static IList<OpenApiParameter> GetOpenApiParameters(IEnumerable<ParameterInfo> parameters, OpenApiComponents components, TypeMaps maps, bool withKey = false, Newtonsoft.Json.JsonSerializer serializer = null)
         {
             var openApiParams = new List<OpenApiParameter>();
             foreach(var parameter in parameters)
             {
                 if (parameter.GetCustomAttribute<IgnoreMemberAttribute>() != null) continue;
-                var schemaParam = TypeUtils.ExplodeParameter(parameter.ParameterType, components, maps);
+                var schemaParam = TypeUtils.ExplodeParameter(parameter.ParameterType, components, maps, serializer);
                 if (schemaParam.Properties.Count > 0)
                 {
                     foreach(var prop in schemaParam.Properties)
@@ -75,7 +75,7 @@ namespace SW.CqApi.Utils
                         //Required = !parameter.IsOptional,
                         AllowEmptyValue = parameter.IsOptional,
                         In = withKey ? ParameterLocation.Path : ParameterLocation.Query,
-                        Schema = TypeUtils.ExplodeParameter(parameter.ParameterType, components, maps)
+                        Schema = TypeUtils.ExplodeParameter(parameter.ParameterType, components, maps, serializer)
                     });
                 }
             }
@@ -83,7 +83,7 @@ namespace SW.CqApi.Utils
         }
 
 
-        public static OpenApiRequestBody GetOpenApiRequestBody(MethodInfo methodInfo, OpenApiComponents components, TypeMaps maps, bool withKey = false)
+        public static OpenApiRequestBody GetOpenApiRequestBody(MethodInfo methodInfo, OpenApiComponents components, TypeMaps maps, bool withKey = false, Newtonsoft.Json.JsonSerializer serializer = null)
         {
 
             var conentMediaType  = new OpenApiMediaType
@@ -100,7 +100,7 @@ namespace SW.CqApi.Utils
 
             foreach(var param in relevantParameters)
             {
-                paramterDict[param.Name] = TypeUtils.ExplodeParameter(param.ParameterType, components, maps);
+                paramterDict[param.Name] = TypeUtils.ExplodeParameter(param.ParameterType, components, maps, serializer);
             }
 
             var bodyName = "";

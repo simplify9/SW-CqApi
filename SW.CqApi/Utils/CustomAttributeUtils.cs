@@ -11,12 +11,12 @@ namespace SW.CqApi.Utils
     {
         
 
-        public static OpenApiResponses ToOpenApiResponses(this IEnumerable<ReturnsAttribute> attributes, OpenApiComponents components, TypeMaps maps)
+        public static OpenApiResponses ToOpenApiResponses(this IEnumerable<ReturnsAttribute> attributes, OpenApiComponents components, TypeMaps maps, Newtonsoft.Json.JsonSerializer serializer = null)
         {
             var responses = new OpenApiResponses();
             foreach(var attribute in attributes)
             {
-                OpenApiSchema schema = TypeUtils.ExplodeParameter(attribute.Type, components, maps);
+                OpenApiSchema schema = TypeUtils.ExplodeParameter(attribute.Type, components, maps, serializer);
                 var mediaType = new OpenApiMediaType
                 {
                     Schema = schema

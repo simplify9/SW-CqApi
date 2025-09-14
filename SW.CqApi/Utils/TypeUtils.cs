@@ -9,12 +9,18 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using SW.PrimitiveTypes;
+using Newtonsoft.Json.Serialization;
 
 namespace SW.CqApi.Utils
 {
     internal static class TypeUtils
     {
         public static OpenApiSchema ExplodeParameter(Type parameter, OpenApiComponents components, TypeMaps maps)
+        {
+            return ExplodeParameter(parameter, components, maps, null);
+        }
+
+        public static OpenApiSchema ExplodeParameter(Type parameter, OpenApiComponents components, TypeMaps maps, Newtonsoft.Json.JsonSerializer serializer)
         {
             OpenApiSchema schema = new OpenApiSchema();
             var jsonifed = parameter.GetJsonType();
@@ -24,7 +30,7 @@ namespace SW.CqApi.Utils
             {
                 foreach(var genArg in parameter.GenericTypeArguments)
                 {
-                    ExplodeParameter(genArg, components, maps);
+                    ExplodeParameter(genArg, components, maps, serializer);
                 }
                 schema.Type = "object";
                 name = parameter.GetGenericName();
@@ -32,7 +38,7 @@ namespace SW.CqApi.Utils
 
             if (maps.ContainsMap(parameter)){
                 var map = maps.GetMap(parameter);
-                schema = ExplodeParameter(map.Type, components, maps);
+                schema = ExplodeParameter(map.Type, components, maps, serializer);
                 schema.Example = map.OpenApiExample;
                 components.Schemas[name] = schema;
             }
@@ -46,7 +52,7 @@ namespace SW.CqApi.Utils
             }
             else if (Nullable.GetUnderlyingType(parameter) != null)
             {
-                schema =  ExplodeParameter(Nullable.GetUnderlyingType(parameter), components, maps);
+                schema =  ExplodeParameter(Nullable.GetUnderlyingType(parameter), components, maps, serializer);
                 schema.Nullable = true;
             }
             else if (parameter.IsEnum)
@@ -74,11 +80,16 @@ namespace SW.CqApi.Utils
             else if(parameter.GetProperties().Length != 0 && !IsNumericType(parameter))
             {
                 Dictionary<string, OpenApiSchema> props = new Dictionary<string, OpenApiSchema>();
+                var namingStrategy = serializer?.ContractResolver is DefaultContractResolver resolver ? resolver.NamingStrategy : null;
+                
                 foreach(var prop in parameter.GetProperties())
                 {
                     
                     if (prop.GetCustomAttribute<IgnoreMemberAttribute>() != null || prop.PropertyType == parameter) continue;
-                    props[prop.Name] = ExplodeParameter(prop.PropertyType, components, maps);
+                    
+                    // Use naming strategy for OpenAPI document generation only
+                    var openApiPropertyName = namingStrategy != null ? namingStrategy.GetPropertyName(prop.Name, false) : prop.Name;
+                    props[openApiPropertyName] = ExplodeParameter(prop.PropertyType, components, maps, serializer);
                 }
 
                 schema.Properties = props;
