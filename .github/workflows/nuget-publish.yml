@@ -36,13 +36,13 @@ jobs:
           project: "SW.CqApi/SW.CqApi.csproj"
           configuration: "Release"
           version: ${{ steps.semver.outputs.version }}
-          api-key: ${{ secrets.NUGET_API_KEY }}
+          api-key: ${{ secrets.SWNUGETKEY }}
           nuget-source: "https://api.nuget.org/v3/index.json"
 
       - name: Tag new version on GitHub origin
         uses: simplify9/sw-workflows/actions/tag-github-origin@main
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.S9_GITHUB_TOKEN }}
           repository: ${{ github.repository }}
           tag: ${{ steps.semver.outputs.version }}
           sha: ${{ github.sha }}
