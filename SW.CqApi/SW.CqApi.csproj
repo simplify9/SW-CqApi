@@ -5,10 +5,15 @@
     <PackageId>SimplyWorks.CqApi</PackageId>
     <Authors>Simplify9</Authors>
     <Product>SimplyWorks.CqApi</Product>
+    <Description>Convention-based REST API framework for .NET that eliminates boilerplate code by automatically routing HTTP requests to handler classes based on folder structure and namespaces. Build CQRS APIs with zero controllers.</Description>
+    <PackageTags>cqrs;api;rest;convention;routing;aspnetcore;framework;boilerplate;commands;queries</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageIcon>icon.png</PackageIcon>
-    <PackageProjectUrl>https://github.com/simplify9/CqApi</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/simplify9/CqApi</RepositoryUrl>
+    <PackageReadmeFile>NUGET_README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/simplify9/SW-CqApi</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/simplify9/SW-CqApi</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReleaseNotes>See https://github.com/simplify9/SW-CqApi/releases for release notes.</PackageReleaseNotes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -27,6 +32,10 @@
     <None Include="..\icon.png">
       <Pack>True</Pack>
       <PackagePath></PackagePath>
+    </None>
+    <None Include="..\NUGET_README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
     </None>
   </ItemGroup>
 
