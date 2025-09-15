@@ -17,13 +17,13 @@ jobs:
 
       - name: Determine semantic version
         id: semver
-        uses: simplify9/.github/.github/actions/determine-semver.yml@main
+        uses: simplify9/sw-workflows/actions/determine-semver.yml@main
         with:
           major: ${{ env.MAJOR }}
           minor: ${{ env.MINOR }}
 
       - name: Dotnet Restore, Build, and Test
-        uses: simplify9/.github/.github/actions/dotnet-restore-build-test.yml@main
+        uses: simplify9/sw-workflows/actions/dotnet-restore-build-test.yml@main
         with:
           projects: "**/*.csproj"
           test-projects: "**/*UnitTests/*.csproj"
@@ -31,7 +31,7 @@ jobs:
           dotnet-version: "8.0.x"
 
       - name: Pack and Push NuGet Package
-        uses: simplify9/.github/.github/actions/dotnet-pack-push.yml@main
+        uses: simplify9/sw-workflows/actions/dotnet-pack-push.yml@main
         with:
           project: "SW.CqApi/SW.CqApi.csproj"
           configuration: "Release"
@@ -40,7 +40,7 @@ jobs:
           nuget-source: "https://api.nuget.org/v3/index.json"
 
       - name: Tag new version on GitHub origin
-        uses: simplify9/.github/.github/actions/tag-github-origin.yml@main
+        uses: simplify9/sw-workflows/actions/tag-github-origin.yml@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
