@@ -37,7 +37,7 @@ jobs:
           configuration: "Release"
           version: ${{ steps.semver.outputs.version }}
           api-key: ${{ secrets.SWNUGETKEY }}
-          nuget-source: "https://api.nuget.org/v3/index.json"
+          nuget-source: "https://api.nuget.org"
 
       - name: Tag new version on GitHub origin
         uses: simplify9/sw-workflows/actions/tag-github-origin@main
