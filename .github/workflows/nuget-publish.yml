@@ -23,7 +23,7 @@ jobs:
           minor: ${{ env.MINOR }}
 
       - name: Dotnet Restore, Build, and Test
-        uses: simplify9/sw-workflows/actions/dotnet-restore-build-test@main
+        uses: simplify9/sw-workflows/actions/dotnet-build@main
         with:
           projects: "**/*.csproj"
           test-projects: "**/*UnitTests/*.csproj"
