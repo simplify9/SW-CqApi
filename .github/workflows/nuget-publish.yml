@@ -33,7 +33,7 @@ jobs:
       - name: Pack and Push NuGet Package
         uses: simplify9/sw-workflows/actions/dotnet-pack-push@main
         with:
-          project: "SW.CqApi/SW.CqApi.csproj"
+          projects: "SW.CqApi/SW.CqApi.csproj"
           configuration: "Release"
           version: ${{ steps.semver.outputs.version }}
           api-key: ${{ secrets.SWNUGETKEY }}
