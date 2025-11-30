@@ -12,7 +12,7 @@ using System.Reflection;
 
 namespace SW.CqApi
 {
-    internal class ServiceDiscovery
+    public class ServiceDiscovery
     {
 
         /* Resource Abc
@@ -58,6 +58,17 @@ namespace SW.CqApi
 
                     var handlerKey = $"{HandlerTypeMetadata.Handlers[interfaceTypeNormalized].Key}{handlerName}";
 
+                    // Capture custom attributes specified in options
+                    var customAttributes = new List<Attribute>();
+                    foreach (var attributeType in options.PreserveCustomAttributes)
+                    {
+                        var attr = serviceType.GetCustomAttribute(attributeType);
+                        if (attr != null)
+                        {
+                            customAttributes.Add(attr);
+                        }
+                    }
+
                     resourceHandlers[resourceName][handlerKey] = new HandlerInfo
                     {
                         HandlerType = serviceType,
@@ -65,7 +76,8 @@ namespace SW.CqApi
                         ArgumentTypes = interfaceType.GetMethod("Handle").GetParameters().Select(p => p.ParameterType).ToList(),
                         Key = handlerKey,
                         Resource = resourceName,
-                        NormalizedInterfaceType = interfaceTypeNormalized
+                        NormalizedInterfaceType = interfaceTypeNormalized,
+                        CustomAttributes = customAttributes
                     };
 
                 }

@@ -80,11 +80,18 @@ namespace SW.CqApi
 
         public Newtonsoft.Json.JsonSerializer Serializer { get; set; }
 
+        /// <summary>
+        /// Custom attributes to be preserved and applied to endpoints. 
+        /// This allows CqApi to recognize and apply ASP.NET Core attributes like [EnableRateLimiting].
+        /// </summary>
+        public IList<Type> PreserveCustomAttributes { get; }
+
         public CqApiOptions()
         {
             Maps = new TypeMaps();
             AuthOptions = new CqApiAuthOptions();
             ResourceDescriptions = new ResourceDescriptions();
+            PreserveCustomAttributes = new List<Type>();
             Serializer = new Newtonsoft.Json.JsonSerializer();
             Serializer.ContractResolver = new CamelCasePropertyNamesContractResolver
             {
