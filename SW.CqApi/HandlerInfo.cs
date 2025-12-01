@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace SW.CqApi
 {
-    internal class HandlerInfo
+    public class HandlerInfo
     {
         //public bool VoidReturnType;
         public Type HandlerType { get; set; }
@@ -17,6 +17,11 @@ namespace SW.CqApi
         public string Resource { get; set; }
 
         public Type NormalizedInterfaceType { get; set; }
+
+        /// <summary>
+        /// Custom attributes found on the handler that should be preserved
+        /// </summary>
+        public IList<Attribute> CustomAttributes { get; set; } = new List<Attribute>();
 
     }
 }

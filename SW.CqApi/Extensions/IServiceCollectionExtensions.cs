@@ -24,6 +24,8 @@ namespace SW.CqApi
             if (configure != null) configure.Invoke(cqApiOptions);
             services.AddSingleton(cqApiOptions);
 
+            // ServiceDiscovery must be added after options are configured
+            // so it can capture custom attributes specified in PreserveCustomAttributes
             services.AddSingleton<ServiceDiscovery>();
 
             if (assemblies.Length == 0) assemblies = new Assembly[] { Assembly.GetCallingAssembly() };

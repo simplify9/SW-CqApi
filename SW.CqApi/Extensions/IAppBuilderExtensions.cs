@@ -1,7 +1,9 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Net.Http.Headers;
+using SW.CqApi.Middleware;
 using SW.PrimitiveTypes;
 using System;
 using System.Collections.Generic;
@@ -14,6 +16,15 @@ namespace SW.CqApi.Extensions
 {
     public static class IApplicationBuilderExtensions
     {
+        /// <summary>
+        /// Adds CqApi custom attribute middleware. 
+        /// This must be called BEFORE UseRouting() to allow custom attributes to be applied to endpoints.
+        /// </summary>
+        public static void UseCqApiAttributeMiddleware(this IApplicationBuilder app)
+        {
+            app.UseMiddleware<CqApiAttributeMiddleware>();
+        }
+
         public static void UseCqApi(this IApplicationBuilder app)
         {
             app.Use(async (context, next) =>
