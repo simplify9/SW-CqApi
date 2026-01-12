@@ -21,11 +21,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="FluentValidation" Version="11.11.0" />
-    <PackageReference Include="Microsoft.OpenApi.Readers" Version="1.6.23" />
+    <PackageReference Include="FluentValidation" Version="12.1.1" />
+    <PackageReference Include="Microsoft.OpenApi.Readers" Version="1.6.28" />
     <PackageReference Include="Newtonsoft.Json.Schema" Version="4.0.1" />
-    <PackageReference Include="Scrutor" Version="6.1.0" />
-    <PackageReference Include="SimplyWorks.HttpExtensions" Version="8.0.0" />
+    <PackageReference Include="Scrutor" Version="7.0.0" />
+    <PackageReference Include="SimplyWorks.HttpExtensions" Version="8.1.0" />
   </ItemGroup>
 
   <ItemGroup>
