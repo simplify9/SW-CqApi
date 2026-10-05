@@ -66,6 +66,7 @@ namespace SW.CqApi.Utils
             switch (splitJson)
             {
                 case "Integer":
+                case "Float":
                 case "Decimal":
                     return "number";
                 case "String":

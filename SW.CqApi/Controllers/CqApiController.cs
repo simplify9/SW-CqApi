@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
@@ -8,8 +9,9 @@ using Microsoft.Extensions.DependencyInjection;
 using SW.PrimitiveTypes;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
-using Newtonsoft.Json.Serialization;
+using Newtonsoft.Json;
 using SW.CqApi.Extensions;
+using SW.CqApi.Serialization;
 using SW.HttpExtensions;
 
 namespace SW.CqApi
@@ -61,7 +63,7 @@ namespace SW.CqApi
             [FromQuery(Name = "lookup")] bool lookup)
         {
             var handlerInfo = _serviceDiscovery.ResolveHandler(resourceName, "get");
-            return ExecuteHandler(handlerInfo, null, null, lookup);
+            return ExecuteHandler(handlerInfo, null, lookup);
         }
 
         [HttpGet("{resourceName}/{key}/{token}")]
@@ -72,7 +74,7 @@ namespace SW.CqApi
             [FromQuery(Name = "lookup")] bool lookup)
         {
             var handler = _serviceDiscovery.ResolveHandler(resourceName, $"get/key/{token}");
-            return await ExecuteHandler(handler, key, null, lookup);
+            return await ExecuteHandler(handler, key, lookup);
         }
 
         [HttpGet("{resourceName}/{token}")]
@@ -82,40 +84,39 @@ namespace SW.CqApi
             [FromQuery(Name = "lookup")] bool lookup)
         {
             if (_serviceDiscovery.TryResolveHandler(resourceName, $"get/{token}", out var handlerInfo))
-                return await ExecuteHandler(handlerInfo, null, null, lookup);
+                return await ExecuteHandler(handlerInfo, null, lookup);
 
             if (_serviceDiscovery.TryResolveHandler(resourceName, "get/key", out handlerInfo))
-                return await ExecuteHandler(handlerInfo, token, null, lookup);
+                return await ExecuteHandler(handlerInfo, token, lookup);
 
             return NotFound();
         }
 
         [HttpPost("{resourceName}")]
-        public async Task<IActionResult> Post(string resourceName, [FromBody] object body)
+        public async Task<IActionResult> Post(string resourceName)
         {
             var handlerInfo = _serviceDiscovery.ResolveHandler(resourceName, "post");
-            return await ExecuteHandler(handlerInfo, null, body);
+            return await ExecuteHandler(handlerInfo, null);
         }
 
         [HttpPost("{resourceName}/{token}")]
-        public async Task<IActionResult> PostWithToken(string resourceName, string token, [FromBody] object body)
+        public async Task<IActionResult> PostWithToken(string resourceName, string token)
         {
             if (_serviceDiscovery.TryResolveHandler(resourceName, $"post/{token}", out var handlerInfo))
-                return await ExecuteHandler(handlerInfo, null, body);
+                return await ExecuteHandler(handlerInfo, null);
 
             else if (_serviceDiscovery.TryResolveHandler(resourceName, "post/key", out handlerInfo))
-                return await ExecuteHandler(handlerInfo, token, body);
+                return await ExecuteHandler(handlerInfo, token);
 
             else
                 return NotFound();
         }
 
         [HttpPost("{resourceName}/{key}/{command}")]
-        public async Task<IActionResult> PostWithKeyAndCommandName(string resourceName, string key, string command,
-            [FromBody] object body)
+        public async Task<IActionResult> PostWithKeyAndCommandName(string resourceName, string key, string command)
         {
             var handlerInfo = _serviceDiscovery.ResolveHandler(resourceName, $"post/key/{command}");
-            return await ExecuteHandler(handlerInfo, key, body);
+            return await ExecuteHandler(handlerInfo, key);
         }
 
         [HttpDelete("{resourceName}/{key}")]
@@ -149,12 +150,34 @@ namespace SW.CqApi
                 return Ok(result);
             }
 
-            var serializedResults = _options.Serializer.SerializeObject(result);
-            return Content(serializedResults, "application/json");
+            return new NewtonsoftJsonResult(result, _options.Serializer);
         }
 
-        private async Task<IActionResult> ExecuteHandler(HandlerInfo handlerInfo, string key, object body = null,
-            bool lookup = false)
+        /// <summary>
+        /// Reads the request body straight from the stream into the handler's request type.
+        /// An empty or <c>null</c> body is refused, as it was when the body was bound by MVC first.
+        /// </summary>
+        private async Task<object> ReadBody(Type type)
+        {
+            object typedParam;
+            try
+            {
+                typedParam = await Request.ReadJsonAsync(_options.Serializer, type);
+            }
+            // Any failure to turn the body into the request type is bad input, as before. I/O
+            // failures (client abort, body over the size limit) keep their own handling.
+            catch (Exception ex) when (ex is not IOException and not OperationCanceledException)
+            {
+                throw new BadInputFormatException(ex);
+            }
+
+            if (typedParam is null)
+                throw new BadInputFormatException(new JsonSerializationException("A non-empty request body is required."));
+
+            return typedParam;
+        }
+
+        private async Task<IActionResult> ExecuteHandler(HandlerInfo handlerInfo, string key, bool lookup = false)
         {
             var handlerInstance = await _serviceProvider.GetHandlerInstance(handlerInfo);
 
@@ -203,15 +226,7 @@ namespace SW.CqApi
 
             if (handlerInfo.NormalizedInterfaceType == typeof(ICommandHandler<,>))
             {
-                object typedParam;
-                try
-                {
-                    typedParam = _options.Serializer.DeserializeObject(body?.ToString(), handlerInfo.ArgumentTypes[0]);
-                }
-                catch (Exception ex)
-                {
-                    throw new BadInputFormatException(ex);
-                }
+                var typedParam = await ReadBody(handlerInfo.ArgumentTypes[0]);
 
                 if (!await ValidateInput(typedParam)) return BadRequest(ModelState);
                 var result = await handlerInstance.Invoke(typedParam);
@@ -220,17 +235,17 @@ namespace SW.CqApi
 
             if (handlerInfo.NormalizedInterfaceType == typeof(ICommandHandler<,,>))
             {
-                object typedParam;
                 object keyParam;
                 try
                 {
                     keyParam = key.ConvertValueToType(handlerInfo.ArgumentTypes[0]);
-                    typedParam = _options.Serializer.DeserializeObject(body?.ToString(), handlerInfo.ArgumentTypes[1]);
                 }
                 catch (Exception ex)
                 {
                     throw new BadInputFormatException(ex);
                 }
+
+                var typedParam = await ReadBody(handlerInfo.ArgumentTypes[1]);
 
                 if (!await ValidateInput(typedParam)) return BadRequest(ModelState);
                 var result = await handlerInstance.Invoke(keyParam, typedParam);
