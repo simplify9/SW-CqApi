@@ -46,11 +46,29 @@ namespace SW.CqApi.Utils
             return responses;
         }
 
+        /// <param name="withKey">
+        /// The first parameter is the route key: it is described as the required <c>{key}</c> path
+        /// parameter, and every other parameter (or request-object property) goes in the query.
+        /// </param>
         public static IList<OpenApiParameter> GetOpenApiParameters(IEnumerable<ParameterInfo> parameters, OpenApiComponents components, TypeMaps maps, bool withKey = false, Newtonsoft.Json.JsonSerializer serializer = null)
         {
             var openApiParams = new List<OpenApiParameter>();
+            var isKey = withKey;
             foreach(var parameter in parameters)
             {
+                if (isKey)
+                {
+                    isKey = false;
+                    openApiParams.Add(new OpenApiParameter
+                    {
+                        Name = "key",
+                        Required = true,
+                        In = ParameterLocation.Path,
+                        Schema = TypeUtils.ExplodeParameter(parameter.ParameterType, components, maps, serializer)
+                    });
+                    continue;
+                }
+
                 if (parameter.GetCustomAttribute<IgnoreMemberAttribute>() != null) continue;
                 var schemaParam = TypeUtils.ExplodeParameter(parameter.ParameterType, components, maps, serializer);
                 if (schemaParam.Properties.Count > 0)
@@ -62,7 +80,7 @@ namespace SW.CqApi.Utils
                             Name = prop.Key,
                             Required = !prop.Value.Nullable,
                             AllowEmptyValue = !prop.Value.Nullable,
-                            In = withKey ? ParameterLocation.Path : ParameterLocation.Query,
+                            In = ParameterLocation.Query,
                             Schema = prop.Value
                         });
                     }
@@ -72,10 +90,9 @@ namespace SW.CqApi.Utils
                     openApiParams.Add(new OpenApiParameter
                     {
                         Name = parameter.Name,
-                        //Required = !parameter.IsOptional,
                         AllowEmptyValue = parameter.IsOptional,
-                        In = withKey ? ParameterLocation.Path : ParameterLocation.Query,
-                        Schema = TypeUtils.ExplodeParameter(parameter.ParameterType, components, maps, serializer)
+                        In = ParameterLocation.Query,
+                        Schema = schemaParam
                     });
                 }
             }
@@ -103,9 +120,11 @@ namespace SW.CqApi.Utils
                 paramterDict[param.Name] = TypeUtils.ExplodeParameter(param.ParameterType, components, maps, serializer);
             }
 
-            var bodyName = "";
-            if(relevantParameters.Count != 0)
-                bodyName = relevantParameters[0].ParameterType.Name;
+            // A command without a request type has no body to describe.
+            if (relevantParameters.Count == 0)
+                return null;
+
+            var bodyName = TypeUtils.SchemaName(relevantParameters[0].ParameterType);
 
 
             var requestBody = new OpenApiRequestBody

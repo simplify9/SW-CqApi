@@ -7,14 +7,21 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using SW.PrimitiveTypes;
+using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
 
 namespace SW.CqApi.Utils
 {
     internal static class TypeUtils
     {
+        // Object schemas whose properties are still being walked, per document. A type met again
+        // while it is in here is a cycle, and is emitted as a $ref: the schema objects themselves
+        // would otherwise form a loop the OpenAPI writer follows until the process overflows its stack.
+        private static readonly ConditionalWeakTable<OpenApiComponents, HashSet<string>> inProgress = new();
+
         public static OpenApiSchema ExplodeParameter(Type parameter, OpenApiComponents components, TypeMaps maps)
         {
             return ExplodeParameter(parameter, components, maps, null);
@@ -24,23 +31,52 @@ namespace SW.CqApi.Utils
         {
             OpenApiSchema schema = new OpenApiSchema();
             var jsonifed = parameter.GetJsonType();
-            string name = parameter.Name;
+            string name = SchemaName(parameter);
+
+            // JSON.NET's dynamic types are free-form JSON. JToken enumerates JTokens, so treating it
+            // as a collection below would recurse forever.
+            if (typeof(JToken).IsAssignableFrom(parameter))
+            {
+                if (typeof(JObject).IsAssignableFrom(parameter)) schema.Type = "object";
+                else if (typeof(JArray).IsAssignableFrom(parameter)) { schema.Type = "array"; schema.Items = new OpenApiSchema(); }
+                components.Schemas[name] = schema;
+                return schema;
+            }
+
+            // Dictionaries are JSON objects keyed by string: describe the value type only.
+            // They also implement IEnumerable<KeyValuePair<,>>, so this must come before collections.
+            var dictionaryValueType = GetDictionaryValueType(parameter);
+            if (dictionaryValueType != null)
+            {
+                schema.Type = "object";
+                schema.AdditionalPropertiesAllowed = true;
+                schema.AdditionalProperties = ExplodeParameter(dictionaryValueType, components, maps, serializer);
+                components.Schemas[name] = schema;
+                return schema;
+            }
 
             // Handle collection types first (List<T>, IList<T>, etc.)
-            if (parameter != typeof(string) && 
-                (parameter.IsGenericType && 
-                 (parameter.GetGenericTypeDefinition() == typeof(List<>) ||
-                  parameter.GetGenericTypeDefinition() == typeof(IList<>) ||
-                  parameter.GetGenericTypeDefinition() == typeof(ICollection<>) ||
-                  parameter.GetGenericTypeDefinition() == typeof(IEnumerable<>)) ||
-                 parameter.GetInterfaces().Any(i => i.IsGenericType && 
-                     (i.GetGenericTypeDefinition() == typeof(IList<>) ||
-                      i.GetGenericTypeDefinition() == typeof(ICollection<>) ||
-                      i.GetGenericTypeDefinition() == typeof(IEnumerable<>)))))
+            if (IsCollection(parameter))
             {
                 schema.Type = "array";
-                var elementType = parameter.GetGenericArguments()[0];
-                schema.Items = ExplodeParameter(elementType, components, maps, serializer);
+                // Arrays aren't generic (string[] has no generic arguments), so read the element type
+                // the way that works for both.
+                var elementType = GetCollectionElementType(parameter);
+
+                // A collection of itself (directly or through another collection) can't be described
+                // finitely; leave its items free-form rather than recurse.
+                var walking = inProgress.GetOrCreateValue(components);
+                var collectionKey = "collection:" + parameter.FullName;
+                if (!walking.Add(collectionKey))
+                    return new OpenApiSchema { Type = "array", Items = new OpenApiSchema() };
+                try
+                {
+                    schema.Items = ExplodeParameter(elementType, components, maps, serializer);
+                }
+                finally
+                {
+                    walking.Remove(collectionKey);
+                }
                 schema.Example = GetExample(parameter, maps, components, serializer);
                 components.Schemas[name] = schema;
                 return schema;
@@ -53,7 +89,6 @@ namespace SW.CqApi.Utils
                     ExplodeParameter(genArg, components, maps, serializer);
                 }
                 schema.Type = "object";
-                name = parameter.GetGenericName();
             }
 
             if (maps.ContainsMap(parameter)){
@@ -64,6 +99,12 @@ namespace SW.CqApi.Utils
             }
             else if (components.Schemas.ContainsKey(name))
             {
+                if (inProgress.GetOrCreateValue(components).Contains(name))
+                    return new OpenApiSchema
+                    {
+                        Reference = new OpenApiReference { Type = ReferenceType.Schema, Id = name }
+                    };
+
                 schema = components.Schemas[name];
             }
             else if (!String.IsNullOrEmpty(parameter.GetDefaultSchema().Title))
@@ -100,19 +141,31 @@ namespace SW.CqApi.Utils
             else if(parameter.GetProperties().Length != 0 && !IsNumericType(parameter))
             {
                 Dictionary<string, OpenApiSchema> props = new Dictionary<string, OpenApiSchema>();
-                var namingStrategy = serializer?.ContractResolver is DefaultContractResolver resolver ? resolver.NamingStrategy : null;
-                
-                foreach(var prop in parameter.GetProperties())
-                {
-                    
-                    if (prop.GetCustomAttribute<IgnoreMemberAttribute>() != null || prop.PropertyType == parameter) continue;
-                    
-                    // Use naming strategy for OpenAPI document generation only
-                    var openApiPropertyName = namingStrategy != null ? namingStrategy.GetPropertyName(prop.Name, false) : prop.Name;
-                    props[openApiPropertyName] = ExplodeParameter(prop.PropertyType, components, maps, serializer);
-                }
-
+                // Registered and marked in progress before walking the properties, so a type that
+                // refers back to itself through another type becomes a $ref instead of recursing
+                // until the process dies with a StackOverflowException.
                 schema.Properties = props;
+                components.Schemas[name] = schema;
+                var walking = inProgress.GetOrCreateValue(components);
+                walking.Add(name);
+                var namingStrategy = serializer?.ContractResolver is DefaultContractResolver resolver ? resolver.NamingStrategy : null;
+
+                try
+                {
+                    foreach(var prop in parameter.GetProperties())
+                    {
+
+                        if (prop.GetCustomAttribute<IgnoreMemberAttribute>() != null || prop.PropertyType == parameter) continue;
+
+                        // Use naming strategy for OpenAPI document generation only
+                        var openApiPropertyName = namingStrategy != null ? namingStrategy.GetPropertyName(prop.Name, false) : prop.Name;
+                        props[openApiPropertyName] = ExplodeParameter(prop.PropertyType, components, maps, serializer);
+                    }
+                }
+                finally
+                {
+                    walking.Remove(name);
+                }
             }
             else
             {
@@ -121,6 +174,59 @@ namespace SW.CqApi.Utils
             components.Schemas[name] = schema;
             return schema;
 
+        }
+
+        /// <summary>
+        /// The components key a type's schema is stored under, and the id a $ref to it uses. Valid
+        /// per the OpenAPI key pattern ^[a-zA-Z0-9.-_]+$, so List`1 or Nullable&lt;Double&gt; become
+        /// List_1 and Nullable_Double_.
+        /// </summary>
+        public static string SchemaName(Type type)
+        {
+            var name = !IsCollection(type) && GetDictionaryValueType(type) == null &&
+                       !typeof(JToken).IsAssignableFrom(type) && type.GenericTypeArguments.Length > 0
+                ? type.GetGenericName()
+                : type.Name;
+
+            var chars = name.ToCharArray();
+            for (var i = 0; i < chars.Length; i++)
+                if (!char.IsAsciiLetterOrDigit(chars[i]) && chars[i] != '.' && chars[i] != '-' && chars[i] != '_')
+                    chars[i] = '_';
+            return new string(chars);
+        }
+
+        private static bool IsCollection(Type parameter) =>
+            parameter != typeof(string) &&
+            (parameter.IsGenericType &&
+             (parameter.GetGenericTypeDefinition() == typeof(List<>) ||
+              parameter.GetGenericTypeDefinition() == typeof(IList<>) ||
+              parameter.GetGenericTypeDefinition() == typeof(ICollection<>) ||
+              parameter.GetGenericTypeDefinition() == typeof(IEnumerable<>)) ||
+             parameter.GetInterfaces().Any(i => i.IsGenericType &&
+                 (i.GetGenericTypeDefinition() == typeof(IList<>) ||
+                  i.GetGenericTypeDefinition() == typeof(ICollection<>) ||
+                  i.GetGenericTypeDefinition() == typeof(IEnumerable<>))));
+
+        private static Type GetCollectionElementType(Type type)
+        {
+            if (type.IsArray) return type.GetElementType();
+
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                return type.GetGenericArguments()[0];
+
+            return type.GetInterfaces()
+                .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                ?.GetGenericArguments()[0] ?? typeof(object);
+        }
+
+        private static Type GetDictionaryValueType(Type type)
+        {
+            static bool IsDictionary(Type t) => t.IsGenericType &&
+                (t.GetGenericTypeDefinition() == typeof(IDictionary<,>) ||
+                 t.GetGenericTypeDefinition() == typeof(IReadOnlyDictionary<,>));
+
+            var dictionary = IsDictionary(type) ? type : type.GetInterfaces().FirstOrDefault(IsDictionary);
+            return dictionary?.GetGenericArguments()[1];
         }
 
         public static bool IsNumericType(Type t )
@@ -143,10 +249,15 @@ namespace SW.CqApi.Utils
                     return false;
             }
         }
-        static public IOpenApiAny GetExample(Type parameter, TypeMaps maps, OpenApiComponents components, Newtonsoft.Json.JsonSerializer serializer = null)
-        {
+        // Examples nest no deeper than this; a cyclic type would otherwise recurse forever.
+        private const int MaxExampleDepth = 8;
 
-            if (components.Schemas.ContainsKey(parameter.Name)) return components.Schemas[parameter.Name].Example;
+        static public IOpenApiAny GetExample(Type parameter, TypeMaps maps, OpenApiComponents components, Newtonsoft.Json.JsonSerializer serializer = null, int depth = 0)
+        {
+            if (depth > MaxExampleDepth) return new OpenApiNull();
+
+            var schemaName = SchemaName(parameter);
+            if (components.Schemas.ContainsKey(schemaName)) return components.Schemas[schemaName].Example;
 
             if (maps.ContainsMap(parameter))
             {
@@ -202,7 +313,7 @@ namespace SW.CqApi.Utils
                 int itemCount = new Random().Next(1, 3);
                 for(int _ = 0; _ < itemCount; _++)
                 {
-                    var innerExample = GetExample(innerType, maps, components, serializer);
+                    var innerExample = GetExample(innerType, maps, components, serializer, depth + 1);
                     if (innerExample != null)
                         exampleArr.Add(innerExample);
                 }
@@ -220,7 +331,7 @@ namespace SW.CqApi.Utils
                     if (prop.GetCustomAttribute<IgnoreMemberAttribute>() != null) continue;
                     
                     var propertyName = namingStrategy != null ? namingStrategy.GetPropertyName(prop.Name, false) : prop.Name;
-                    var propertyExample = GetExample(prop.PropertyType, maps, components, serializer);
+                    var propertyExample = GetExample(prop.PropertyType, maps, components, serializer, depth + 1);
                     if (propertyExample != null)
                         example.Add(propertyName, propertyExample);
                 }

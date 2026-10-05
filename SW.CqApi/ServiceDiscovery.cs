@@ -109,7 +109,22 @@ namespace SW.CqApi
             return resourceHandlers.GetRoles();
         }
 
+        // The handler set is fixed after startup, so the document only needs building once.
+        // A failed build isn't cached; the next request tries again.
+        private readonly object openApiDocumentLock = new object();
+        private string openApiDocument;
+
         public string GetOpenApiDocument()
+        {
+            if (openApiDocument != null) return openApiDocument;
+
+            lock (openApiDocumentLock)
+            {
+                return openApiDocument ??= BuildOpenApiDocument();
+            }
+        }
+
+        private string BuildOpenApiDocument()
         {
 
             string apiPrefix = $"/{options.UrlPrefix}";
@@ -128,7 +143,8 @@ namespace SW.CqApi
                 Info = new OpenApiInfo
                 {
                     Version = "V3",
-                    Title = options.ApplicationName,
+                    // Required by the spec; Traxis services set Description but not ApplicationName.
+                    Title = options.ApplicationName ?? options.Description ?? "CqApi",
                     Description = desc
                 },
                 Servers = new List<OpenApiServer>
@@ -147,15 +163,12 @@ namespace SW.CqApi
                                      options.ResourceDescriptions.Get(res.Key) : 
                                      $"Commands and Queries related to {res.Key}";
 
-                var pathItem = new OpenApiPathItem();
-                document.Paths.Add(res.Key, pathItem);
                 var tag = new OpenApiTag {
                     Name = res.Key,
                     Description = description
                 };
                 document.Tags.Add(tag);
 
-                pathItem.Operations = new Dictionary<OperationType, OpenApiOperation>();
                 foreach (var handler in res.Value)
                 {
 
@@ -208,7 +221,7 @@ namespace SW.CqApi
                     {
                         string path = $"{apiPrefix}/{res.Key}{handler.Key.Substring(handler.Key.LastIndexOf('/'))}";
                         initializePath(document, path);
-                        apiOperation.Parameters = OpenApiUtils.GetOpenApiParameters(handler.Value.Method.GetParameters(), components, options.Maps, true, options.Serializer);
+                        apiOperation.Parameters = OpenApiUtils.GetOpenApiParameters(handler.Value.Method.GetParameters(), components, options.Maps, false, options.Serializer);
                         document.Paths[path].Operations.Add(OperationType.Get, apiOperation);
                     }
 
