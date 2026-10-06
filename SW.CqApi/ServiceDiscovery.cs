@@ -6,6 +6,7 @@ using Microsoft.OpenApi.Models;
 using SW.CqApi.Utils;
 using SW.PrimitiveTypes;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -109,22 +110,30 @@ namespace SW.CqApi
             return resourceHandlers.GetRoles();
         }
 
-        // The handler set is fixed after startup, so the document only needs building once.
-        // A failed build isn't cached; the next request tries again.
-        private readonly object openApiDocumentLock = new object();
-        private string openApiDocument;
+        // The handler set is fixed after startup, so each document only needs building once.
+        // Keyed by path base, of which a service sees one or two (none locally, "/accounting"
+        // behind the ingress). A failed build isn't cached; the next request tries again.
+        private const int MaxCachedOpenApiDocuments = 8;
+        private readonly ConcurrentDictionary<string, string> openApiDocuments = new ConcurrentDictionary<string, string>();
 
-        public string GetOpenApiDocument()
+        public string GetOpenApiDocument() => GetOpenApiDocument(null);
+
+        /// <param name="pathBase">
+        /// The request's path base (e.g. "/accounting"). Declared as the document's server, so
+        /// Swagger UI's "Try it out" calls /accounting/api/... rather than /api/... at the host root.
+        /// </param>
+        public string GetOpenApiDocument(string pathBase)
         {
-            if (openApiDocument != null) return openApiDocument;
+            pathBase ??= string.Empty;
+            if (openApiDocuments.TryGetValue(pathBase, out var cached)) return cached;
 
-            lock (openApiDocumentLock)
-            {
-                return openApiDocument ??= BuildOpenApiDocument();
-            }
+            var document = BuildOpenApiDocument(pathBase);
+            if (openApiDocuments.Count < MaxCachedOpenApiDocuments)
+                openApiDocuments.TryAdd(pathBase, document);
+            return document;
         }
 
-        private string BuildOpenApiDocument()
+        private string BuildOpenApiDocument(string pathBase)
         {
 
             string apiPrefix = $"/{options.UrlPrefix}";
@@ -147,10 +156,10 @@ namespace SW.CqApi
                     Title = options.ApplicationName ?? options.Description ?? "CqApi",
                     Description = desc
                 },
-                Servers = new List<OpenApiServer>
-                {
-                    //new OpenApiServer { Url = "http://petstore.swagger.io/api" }
-                },
+                // Without a server, clients resolve paths against the host root and lose the path base.
+                Servers = string.IsNullOrEmpty(pathBase)
+                    ? new List<OpenApiServer>()
+                    : new List<OpenApiServer> { new OpenApiServer { Url = pathBase } },
                 Paths = new OpenApiPaths(),
                 Components = components,
             };
