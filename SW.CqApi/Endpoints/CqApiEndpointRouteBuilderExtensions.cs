@@ -7,9 +7,11 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using SW.CqApi;
 using SW.CqApi.Endpoints;
 
-namespace SW.CqApi
+// In ASP.NET's own namespace, like MapControllers(), so Program.cs needs no extra using.
+namespace Microsoft.AspNetCore.Builder
 {
     public static class CqApiEndpointRouteBuilderExtensions
     {
