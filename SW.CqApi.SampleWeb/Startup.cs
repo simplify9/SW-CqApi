@@ -98,6 +98,7 @@ namespace SW.CqApi.SampleWeb
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapControllers();
+                endpoints.MapCqApi();
                 endpoints.MapRazorPages();
             });
         }

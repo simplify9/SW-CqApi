@@ -38,51 +38,98 @@ namespace SW.CqApi
         public ServiceDiscovery(IServiceProvider serviceProvider, ILogger<ServiceDiscovery> logger, CqApiOptions options)
         {
             this.options = options;
-            using (var scope = serviceProvider.CreateScope())
+
+            foreach (var serviceType in DiscoverHandlerTypes(serviceProvider))
             {
-                var registeredHandlers = scope.ServiceProvider.GetServices<IHandler>();
+                var interfaceType = serviceType.GetTypeInfo().ImplementedInterfaces.Where(i => typeof(IHandler).IsAssignableFrom(i) && i != typeof(IHandler)).Single();
+                var interfaceTypeNormalized = interfaceType.IsGenericType ? interfaceType.GetGenericTypeDefinition() : interfaceType;
 
-                foreach (var svc in registeredHandlers)
+                var typeNameArray = serviceType.FullName.Split('.');
+                var resourceName = typeNameArray[typeNameArray.Length - 2].ToLower();
+
+                var handlerNameAttribute = serviceType.GetCustomAttribute<HandlerNameAttribute>();
+                var handlerName = handlerNameAttribute == null ? "" : $"/{handlerNameAttribute.Name.ToLower()}";
+
+                if (!resourceHandlers.ContainsKey(resourceName))
+                    resourceHandlers.Add(resourceName, new Dictionary<string, HandlerInfo>(StringComparer.OrdinalIgnoreCase));
+
+                var handlerKey = $"{HandlerTypeMetadata.Handlers[interfaceTypeNormalized].Key}{handlerName}";
+
+                // Capture custom attributes specified in options
+                var customAttributes = new List<Attribute>();
+                foreach (var attributeType in options.PreserveCustomAttributes)
                 {
-                    var serviceType = svc.GetType();
-                    var interfaceType = serviceType.GetTypeInfo().ImplementedInterfaces.Where(i => typeof(IHandler).IsAssignableFrom(i) && i != typeof(IHandler)).Single();
-                    var interfaceTypeNormalized = interfaceType.IsGenericType ? interfaceType.GetGenericTypeDefinition() : interfaceType;
-
-                    var typeNameArray = serviceType.FullName.Split('.');
-                    var resourceName = typeNameArray[typeNameArray.Length - 2].ToLower();
-
-                    var handlerNameAttribute = serviceType.GetCustomAttribute<HandlerNameAttribute>();
-                    var handlerName = handlerNameAttribute == null ? "" : $"/{handlerNameAttribute.Name.ToLower()}";
-
-                    if (!resourceHandlers.ContainsKey(resourceName))
-                        resourceHandlers.Add(resourceName, new Dictionary<string, HandlerInfo>(StringComparer.OrdinalIgnoreCase));
-
-                    var handlerKey = $"{HandlerTypeMetadata.Handlers[interfaceTypeNormalized].Key}{handlerName}";
-
-                    // Capture custom attributes specified in options
-                    var customAttributes = new List<Attribute>();
-                    foreach (var attributeType in options.PreserveCustomAttributes)
+                    var attr = serviceType.GetCustomAttribute(attributeType);
+                    if (attr != null)
                     {
-                        var attr = serviceType.GetCustomAttribute(attributeType);
-                        if (attr != null)
-                        {
-                            customAttributes.Add(attr);
-                        }
+                        customAttributes.Add(attr);
                     }
+                }
 
-                    resourceHandlers[resourceName][handlerKey] = new HandlerInfo
+                var method = interfaceType.GetMethod("Handle");
+                var protect = serviceType.GetCustomAttribute<ProtectAttribute>();
+                var unprotect = serviceType.GetCustomAttribute<UnprotectAttribute>();
+
+                string[] requiredRoles = null;
+                if (protect?.RequireRole ?? false)
+                {
+                    var prefix = string.IsNullOrWhiteSpace(options.RolePrefix) ? resourceName : $"{options.RolePrefix}.{resourceName}";
+                    requiredRoles = new[] { $"{prefix}.{serviceType.Name}", $"{prefix}.*" };
+                }
+
+                resourceHandlers[resourceName][handlerKey] = new HandlerInfo
+                {
+                    HandlerType = serviceType,
+                    Method = method,
+                    ArgumentTypes = method.GetParameters().Select(p => p.ParameterType).ToList(),
+                    Key = handlerKey,
+                    Resource = resourceName,
+                    NormalizedInterfaceType = interfaceTypeNormalized,
+                    CustomAttributes = customAttributes,
+                    Invoker = HandlerInvoker.Create(method),
+                    RequiresAuthentication = (options.ProtectAll && unprotect == null) || protect != null,
+                    RequiredRoles = requiredRoles,
+                };
+            }
+        }
+
+        /// <summary>
+        /// Handler types in registration order, read from the service registrations so that
+        /// discovering them doesn't construct every handler (and its dependencies) at startup.
+        /// A handler registered through a factory or as an instance is constructed once to learn
+        /// its type, as before.
+        /// </summary>
+        private static IEnumerable<Type> DiscoverHandlerTypes(IServiceProvider serviceProvider)
+        {
+            var registrations = serviceProvider.GetService<CqApiServiceRegistrations>();
+            if (registrations == null)
+            {
+                using var scope = serviceProvider.CreateScope();
+                return scope.ServiceProvider.GetServices<IHandler>().Select(h => h.GetType()).ToList();
+            }
+
+            var types = new List<Type>();
+            IServiceScope fallbackScope = null;
+            try
+            {
+                var index = 0;
+                foreach (var descriptor in registrations.Services.Where(d => d.ServiceType == typeof(IHandler)).ToList())
+                {
+                    var type = descriptor.IsKeyedService ? null : descriptor.ImplementationType ?? descriptor.ImplementationInstance?.GetType();
+                    if (type == null && !descriptor.IsKeyedService)
                     {
-                        HandlerType = serviceType,
-                        Method = interfaceType.GetMethod("Handle"),
-                        ArgumentTypes = interfaceType.GetMethod("Handle").GetParameters().Select(p => p.ParameterType).ToList(),
-                        Key = handlerKey,
-                        Resource = resourceName,
-                        NormalizedInterfaceType = interfaceTypeNormalized,
-                        CustomAttributes = customAttributes
-                    };
-
+                        fallbackScope ??= serviceProvider.CreateScope();
+                        type = fallbackScope.ServiceProvider.GetServices<IHandler>().ElementAt(index).GetType();
+                    }
+                    if (type != null) types.Add(type);
+                    if (!descriptor.IsKeyedService) index++;
                 }
             }
+            finally
+            {
+                fallbackScope?.Dispose();
+            }
+            return types;
         }
 
         public bool TryResolveHandler(string resourceName, string handlerKey, out HandlerInfo handlerInfo)
@@ -104,6 +151,9 @@ namespace SW.CqApi
 
             throw new SWNotFoundException($"{resourceName}/{handlerKey}");
         }
+
+        /// <summary>Every handler, one per resource and handler key.</summary>
+        public IEnumerable<HandlerInfo> Handlers => resourceHandlers.Values.SelectMany(h => h.Values);
 
         public IEnumerable<string> GetRoles()
         {

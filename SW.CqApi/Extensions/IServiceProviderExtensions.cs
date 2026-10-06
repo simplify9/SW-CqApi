@@ -1,57 +1,38 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using SW.PrimitiveTypes;
 using System;
 using System.Linq;
-using System.Reflection;
 using System.Security.Claims;
-using System.Threading.Tasks;
 
 namespace SW.CqApi
 {
     internal static class IServiceProviderExtensions
     {
-        async public static Task<HandlerInstance> GetHandlerInstance(this IServiceProvider serviceProvider, HandlerInfo handlerInfo)
+        /// <summary>
+        /// Resolves the handler and applies its protection: authentication when the handler is
+        /// protected (or <see cref="CqApiOptions.ProtectAll"/> is on and it isn't unprotected),
+        /// plus a role claim when it is marked <c>[Protect(RequireRole = true)]</c>.
+        /// </summary>
+        public static object GetHandlerInstance(this IServiceProvider serviceProvider, HandlerInfo handlerInfo)
         {
-            var handlerInstance = new HandlerInstance
-            {
-                Method = handlerInfo.Method,
-                Instance = serviceProvider.GetService(handlerInfo.HandlerType)
-            };
+            var instance = serviceProvider.GetService(handlerInfo.HandlerType);
 
-            if (handlerInstance.Instance is null)
-
+            if (instance is null)
                 throw new SWException($"Could not find required service {handlerInfo.Key} for resource {handlerInfo.Resource}.");
 
-            CqApiOptions options = serviceProvider.GetService<CqApiOptions>() ?? new CqApiOptions();
-            var protectAttribute = handlerInfo.HandlerType.GetCustomAttribute<ProtectAttribute>();
-            var unprotectAttribute = handlerInfo.HandlerType.GetCustomAttribute<UnprotectAttribute>();
-
-            if ((options.ProtectAll && unprotectAttribute == null) || protectAttribute is ProtectAttribute)
+            if (handlerInfo.RequiresAuthentication)
             {
                 var requestContext = serviceProvider.GetRequiredService<RequestContext>();
 
                 if (!requestContext.IsValid)
-
                     throw new SWUnauthorizedException();
 
-                if (protectAttribute?.RequireRole ?? false)
-                {
-
-                    var prefix = string.IsNullOrWhiteSpace(options.RolePrefix) ? handlerInfo.Resource : $"{options.RolePrefix}.{handlerInfo.Resource}";
-
-                    var requiredRoles = new string[]
-                    {
-                        $"{prefix}.{handlerInfo.HandlerType.Name}",
-                        $"{prefix}.*"
-                    };
-
-                    if (!requestContext.User.Claims.Any(c => c.Subject.RoleClaimType == ClaimTypes.Role && requiredRoles.Contains(c.Value, StringComparer.OrdinalIgnoreCase)))
-                        throw new SWForbiddenException();
-                }
+                if (handlerInfo.RequiredRoles != null &&
+                    !requestContext.User.Claims.Any(c => c.Subject.RoleClaimType == ClaimTypes.Role && handlerInfo.RequiredRoles.Contains(c.Value, StringComparer.OrdinalIgnoreCase)))
+                    throw new SWForbiddenException();
             }
 
-            return handlerInstance;
+            return instance;
         }
-
     }
 }
