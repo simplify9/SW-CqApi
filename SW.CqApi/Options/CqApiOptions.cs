@@ -78,6 +78,13 @@ namespace SW.CqApi
 
         public string RolePrefix { get; set; }
 
+        /// <summary>
+        /// Answer <c>SWForbiddenException</c> (and a missing required role) with 403 Forbidden.
+        /// Off by default: CqApi has always answered 401 for both, and clients may treat 401 as
+        /// "sign in again" and 403 as "not allowed", so switch it on only when they handle 403.
+        /// </summary>
+        public bool ReturnForbiddenAs403 { get; set; }
+
         public Newtonsoft.Json.JsonSerializer Serializer { get; set; }
 
         /// <summary>

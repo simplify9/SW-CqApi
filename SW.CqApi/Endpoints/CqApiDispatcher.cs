@@ -291,6 +291,9 @@ namespace SW.CqApi.Endpoints
             if (exception is SWNotFoundException)
                 result = new NotFoundObjectResult(exception.Message);
 
+            else if (exception is SWForbiddenException && services.GetRequiredService<CqApiOptions>().ReturnForbiddenAs403)
+                result = new StatusCodeResult(StatusCodes.Status403Forbidden);
+
             else if (exception is SWForbiddenException or SWUnauthorizedException)
                 result = new UnauthorizedResult();
 
