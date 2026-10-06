@@ -35,7 +35,7 @@ namespace SW.CqApi.UnitTests
                 app.UseRouting();
                 app.UseAuthorization();
                 app.UseHttpAsRequestContext();
-                app.UseEndpoints(endpoints => endpoints.MapControllers());
+                app.UseEndpoints(endpoints => { endpoints.MapControllers(); endpoints.MapCqApi(); });
             }
         }
 

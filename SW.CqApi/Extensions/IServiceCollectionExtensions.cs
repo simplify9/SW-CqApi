@@ -1,6 +1,9 @@
 ﻿
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
+using SW.CqApi.Endpoints;
 using SW.CqApi.AuthOptions;
 using SW.PrimitiveTypes;
 using System;
@@ -47,10 +50,11 @@ namespace SW.CqApi
             
             services.AddHttpContextAccessor();
             services.AddScoped<RequestContext>();
-            services.AddRouting(options =>
-            {
-                options.ConstraintMap.Add("cqapiPrefix", typeof(CqapiPrefixRouteConstraint));
-            });
+            services.AddRouting();
+            // Handlers still answer with MVC action results, executed through MVC's formatters.
+            services.AddMvcCore();
+            services.TryAddSingleton(new CqApiServiceRegistrations(services));
+            services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, CqApiEndpointCheck>());
 
             return services;
         }

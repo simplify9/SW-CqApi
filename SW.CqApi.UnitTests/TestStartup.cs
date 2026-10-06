@@ -27,7 +27,7 @@ namespace SW.CqApi.UnitTests
 
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddControllers().AddApplicationPart(typeof(CqApiController).Assembly);
+            services.AddControllers();
             services.AddCqApi(typeof(TestStartup).Assembly);
             services.AddScoped<RequestContext>();
             services.AddAuthentication().AddJwtBearer(options =>
@@ -52,7 +52,7 @@ namespace SW.CqApi.UnitTests
 
             app.UseHttpAsRequestContext();
 
-            app.UseEndpoints(endpoints => { endpoints.MapControllers(); });
+            app.UseEndpoints(endpoints => { endpoints.MapControllers(); endpoints.MapCqApi(); });
         }
     }
 }
