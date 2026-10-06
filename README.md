@@ -15,6 +15,9 @@
 - **Authentication & Authorization**: Built-in JWT and role-based security
 - **Type-Safe Serialization**: Configurable JSON serialization with proper type mapping
 - **Validation Support**: FluentValidation integration out of the box
+- **One Endpoint per Handler** (v10): real ASP.NET Core endpoints, so routing, rate limiting, authorization and tracing see each handler
+
+> **Upgrading from 8.x?** See [MIGRATION-10.md](MIGRATION-10.md). CqApi 10 targets .NET 10 and needs one extra line: `endpoints.MapCqApi()`.
 
 ## 📦 Installation
 
@@ -71,10 +74,14 @@ public void ConfigureServices(IServiceCollection services)
 
 public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
 {
-    // Add CqApi middleware
-    app.UseCqApi();
-    
-    // Your other middleware...
+    app.UseRouting();
+    app.UseAuthorization();
+
+    app.UseEndpoints(endpoints =>
+    {
+        endpoints.MapControllers();
+        endpoints.MapCqApi();   // one endpoint per handler
+    });
 }
 ```
 
@@ -309,7 +316,7 @@ public class PublicInfo : IQueryHandler<PublicInfoDto>
 
 SW.CqApi automatically generates OpenAPI documentation. Access it at:
 
-- Swagger JSON: `GET /api/swagger.json`
+- Swagger JSON: `GET /api/swagger.json` (served as `application/json`; behind `UsePathBase`, the path base is declared as the document's server so Swagger UI's "Try it out" keeps it)
 - Built-in Swagger UI: Configure in your startup
 
 Use the `[Returns]` attribute to document response types:

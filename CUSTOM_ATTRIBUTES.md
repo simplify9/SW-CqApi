@@ -26,17 +26,22 @@ services.AddCqApi(options =>
 });
 ```
 
-### 2. Use the Middleware
+### 2. Map the endpoints
 
-The `CqApiAttributeMiddleware` must be added **BEFORE** `UseRouting()` to apply the custom attributes to endpoints:
+Since CqApi 10 each handler is its own endpoint, and the preserved attributes are part of that
+endpoint's metadata from startup. No extra middleware is needed; middleware such as the rate
+limiter only has to run after `UseRouting()`, as it would for any endpoint:
 
 ```csharp
 app.UseRouting();
-app.UseCqApiAttributeMiddleware(); // Add this!
-app.UseRateLimiter(); // Now rate limiting can see the attributes
+app.UseRateLimiter(); // sees [EnableRateLimiting] on the handler's endpoint
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapControllers();
+app.MapCqApi();
 ```
+
+(`UseCqApiAttributeMiddleware()` from 8.x is now an obsolete no-op; remove the call.)
 
 ### 3. Apply Attributes to Handlers
 
@@ -60,7 +65,7 @@ public class UserExists : IGetHandler<string, object>
 1. **Configuration**: `PreserveCustomAttributes` list tells CqApi which attribute types to capture
 2. **Discovery**: During handler discovery, `ServiceDiscovery` captures specified custom attributes from each handler class
 3. **Storage**: Custom attributes are stored in `HandlerInfo.CustomAttributes`
-4. **Middleware**: `CqApiAttributeMiddleware` intercepts requests, resolves the handler, and dynamically applies custom attributes to the endpoint metadata
+4. **Endpoints**: `MapCqApi()` adds them as metadata on the handler's own endpoint at startup
 5. **ASP.NET Core**: Downstream middleware (rate limiting, CORS, etc.) can now see these attributes
 
 ## Example: Rate Limiting
@@ -106,20 +111,15 @@ You can preserve any attribute type by adding it to `PreserveCustomAttributes`. 
 - `[ResponseCache]` - Response caching
 - Custom attributes you define
 
-## Breaking Changes
-
-None! This is a purely additive feature. Existing CqApi applications continue to work without any changes.
-
 ## Performance
 
-The middleware adds minimal overhead:
-
-- Handler lookup is O(1) dictionary lookup
-- Attribute application only occurs when custom attributes are configured
-- No impact if `PreserveCustomAttributes` is empty
+Nothing happens per request: the attributes are read once at startup and stored as endpoint
+metadata. In 8.x a middleware re-parsed every request's path to find the handler and rebuilt the
+endpoint with the extra metadata.
 
 ## Notes
 
-- The middleware must be placed **before** `UseRouting()` to work correctly
-- Attributes are applied per-request, allowing dynamic behavior
-- The middleware only processes requests matching the CqApi URL prefix
+- Only attribute types listed in `PreserveCustomAttributes` are added, so an `[Authorize]` that
+  sits on a handler but isn't listed doesn't start being enforced.
+- `app.MapCqApi()` returns a convention builder, so a convention can also be applied to every
+  CqApi endpoint at once, e.g. `app.MapCqApi().RequireRateLimiting("default")`.

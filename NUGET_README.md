@@ -12,12 +12,14 @@ dotnet add package SimplyWorks.CqApi
 ```
 
 ```csharp
-// Startup.cs
-services.AddCqApi(config =>
+// Program.cs
+builder.Services.AddCqApi(config =>
 {
     config.ApplicationName = "My API";
     config.UrlPrefix = "api";
 });
+...
+app.MapCqApi();   // one endpoint per handler (CqApi 10)
 
 // Resources/Users/Create.cs  → POST /api/users
 public class Create : ICommandHandler<CreateUserRequest, int>
@@ -37,6 +39,8 @@ public class Create : ICommandHandler<CreateUserRequest, int>
 - 🔐 **Authentication**: JWT and role-based security
 - 📖 **Auto Documentation**: OpenAPI/Swagger generation
 - ✅ **Validation**: FluentValidation integration
+
+Upgrading from 8.x: see [MIGRATION-10.md](https://github.com/simplify9/SW-CqApi/blob/main/MIGRATION-10.md).
 
 ## Full Documentation
 
