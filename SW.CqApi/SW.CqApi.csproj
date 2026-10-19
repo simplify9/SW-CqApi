@@ -22,10 +22,10 @@
 
   <ItemGroup>
     <PackageReference Include="FluentValidation" Version="12.1.1" />
-    <PackageReference Include="Microsoft.OpenApi.Readers" Version="1.6.28" />
+    <PackageReference Include="Microsoft.OpenApi.Readers" Version="1.6.31" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="Scrutor" Version="7.0.0" />
-    <PackageReference Include="SimplyWorks.HttpExtensions" Version="8.1.1" />
+    <PackageReference Include="SimplyWorks.HttpExtensions" Version="8.1.9" />
   </ItemGroup>
 
   <ItemGroup>
